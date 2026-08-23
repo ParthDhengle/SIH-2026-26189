@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { 
-  SearchCode, 
+  Send, 
+  Sparkles, 
   HelpCircle, 
   User, 
   Phone, 
@@ -8,299 +9,229 @@ import {
   MapPin, 
   FileText, 
   ShieldAlert, 
+  CheckCircle2, 
   ArrowRight,
-  Sparkles,
-  Link2,
-  CheckCircle2
+  TrendingUp
 } from 'lucide-react';
-import { connectionPaths, searchEntitiesList } from '../data/mockData';
 
-export default function Investigation() {
-  const [queryText, setQueryText] = useState('');
-  const [activePath, setActivePath] = useState(null);
-  const [showIncomplete, setShowIncomplete] = useState(false);
+export default function Investigation({ caseData }) {
+  // Encapsulated chat history state mapped per case ID
+  const [chatHistories, setChatHistories] = useState({
+    "CASE-2026-001": [
+      { sender: 'ai', text: 'Cognitive Connection System initialized. Ask anything about Operation Blackout.' }
+    ],
+    "CASE-2026-002": [
+      { sender: 'ai', text: 'Cognitive Connection System initialized. Ask anything about the Sector 15 Cyber Extortion group.' }
+    ],
+    "CASE-2026-003": [
+      { sender: 'ai', text: 'Cognitive Connection System initialized. Ask anything about the Vikram Hawala Syndicate.' }
+    ]
+  });
 
-  // Quick Query Helper
-  const runPresetQuery = (sourceId, targetId) => {
-    const path = connectionPaths.find(p => p.source === sourceId && p.target === targetId);
-    if (path) {
-      setActivePath(path);
-      setQueryText(`How is ${path.sourceName} connected to ${path.targetName}?`);
-      setShowIncomplete(false);
-    }
+  const [inputVal, setInputVal] = useState('');
+
+  // Retrieve current active chat history
+  const activeChat = chatHistories[caseData.id] || [
+    { sender: 'ai', text: 'Cognitive system initialized. Ask a question regarding this case.' }
+  ];
+
+  const updateActiveChat = (newMessages) => {
+    setChatHistories({
+      ...chatHistories,
+      [caseData.id]: newMessages
+    });
   };
 
-  // Handle Search Submit
-  const handleSearch = (e) => {
-    e.preventDefault();
-    const cleanQuery = queryText.toLowerCase();
-    
-    // Find if the query references two entities we have paths for
-    let foundPath = null;
-    for (const path of connectionPaths) {
-      const srcName = path.sourceName.toLowerCase();
-      const tgtName = path.targetName.toLowerCase();
-      const srcFirst = srcName.split(' ')[0];
-      const tgtFirst = tgtName.split(' ')[0];
+  const handleSend = (text) => {
+    if (!text.trim()) return;
 
-      // Check if both names are mentioned in the search text
-      if (
-        (cleanQuery.includes(srcFirst) && cleanQuery.includes(tgtFirst)) ||
-        (cleanQuery.includes(path.source) && cleanQuery.includes(path.target))
-      ) {
-        foundPath = path;
-        break;
+    const userMsg = { sender: 'user', text };
+    const nextChat = [...activeChat, userMsg];
+    updateActiveChat(nextChat);
+    setInputVal('');
+
+    // Simulate AI response delay
+    setTimeout(() => {
+      const queryKey = text.toLowerCase().trim().replace(/[?.]$/g, '');
+      
+      // Look up matching pre-computed response in active case data
+      let aiResponse = null;
+      if (caseData.chatResponses && caseData.chatResponses[queryKey]) {
+        aiResponse = caseData.chatResponses[queryKey];
+      } else {
+        // Fallback keyword search
+        const keys = Object.keys(caseData.chatResponses || {});
+        const matchedKey = keys.find(k => queryKey.includes(k) || k.includes(queryKey));
+        if (matchedKey) {
+          aiResponse = caseData.chatResponses[matchedKey];
+        }
       }
-    }
 
-    if (foundPath) {
-      setActivePath(foundPath);
-      setShowIncomplete(false);
-    } else {
-      setActivePath(null);
-      setShowIncomplete(true);
-    }
+      if (aiResponse) {
+        updateActiveChat([
+          ...nextChat,
+          {
+            sender: 'ai',
+            text: aiResponse.text,
+            path: aiResponse.path,
+            confidence: aiResponse.confidence,
+            evidenceCard: aiResponse.evidenceCard
+          }
+        ]);
+      } else {
+        // Incomplete / Unknown Query fallback
+        updateActiveChat([
+          ...nextChat,
+          {
+            sender: 'ai',
+            text: 'Need more information. The query is incomplete or could not be mapped to any entity connection route in this case file. Try asking one of the suggested questions listed below.',
+            isIncomplete: true
+          }
+        ]);
+      }
+    }, 600);
   };
 
-  // Helper to map icons dynamically
-  const getStepIcon = (iconName) => {
-    switch (iconName) {
-      case 'User': return <User size={16} className="text-cyber-blue" />;
-      case 'Phone': return <Phone size={16} className="text-cyber-blue" />;
-      case 'Car': return <Car size={16} className="text-cyber-blue" />;
-      case 'MapPin': return <MapPin size={16} className="text-cyber-blue" />;
-      case 'ShieldAlert': return <ShieldAlert size={16} className="text-cyber-red" />;
-      default: return <FileText size={16} className="text-slate-400" />;
+  const getStepIcon = (type) => {
+    switch (type) {
+      case 'person': return <User size={14} className="text-cyber-blue" />;
+      case 'phone': return <Phone size={14} className="text-cyan-500" />;
+      case 'vehicle': return <Car size={14} className="text-amber-500" />;
+      case 'location': return <MapPin size={14} className="text-emerald-500" />;
+      default: return <FileText size={14} className="text-slate-400" />;
     }
   };
 
   return (
-    <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-4rem)] flex-1">
-      {/* Page Title */}
-      <div className="flex items-center justify-between border-b border-cyber-border pb-4">
-        <div>
-          <h2 className="text-xl font-extrabold text-slate-100 uppercase tracking-wider">
-            AI Connection Investigator
-          </h2>
-          <p className="text-xs text-slate-400">
-            Query the cognitive relationship engine to reveal connection chains and evidence links.
-          </p>
-        </div>
-      </div>
+    <div className="flex flex-col h-full bg-cyber-darkest text-slate-800">
+      
+      {/* Messages Feed */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-4 max-h-[calc(100vh-14rem)]">
+        {activeChat.map((msg, idx) => {
+          const isAI = msg.sender === 'ai';
+          return (
+            <div 
+              key={idx} 
+              className={`flex flex-col ${isAI ? 'items-start' : 'items-end'} animate-in fade-in slide-in-from-bottom-2 duration-200`}
+            >
+              <div className={`max-w-2xl p-4 rounded-xl shadow-sm border ${
+                isAI 
+                  ? 'bg-white border-cyber-border text-slate-800' 
+                  : 'bg-cyber-blue text-white border-cyber-blue-dark'
+              }`}>
+                <p className="text-xs leading-relaxed font-sans">{msg.text}</p>
 
-      {/* Query Bar */}
-      <div className="bg-cyber-darker p-5 rounded-xl border border-cyber-border space-y-4">
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <div className="flex-1 relative">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <SearchCode size={18} className="text-cyber-blue animate-pulse" />
-            </span>
-            <input
-              type="text"
-              placeholder="e.g. How is Rahul connected to Amit?"
-              value={queryText}
-              onChange={(e) => setQueryText(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-cyber-dark border border-cyber-border rounded-lg text-slate-200 placeholder-slate-500 text-sm focus:outline-none focus:border-cyber-blue focus:ring-1 focus:ring-cyber-blue font-semibold transition-all"
-            />
-          </div>
-          <button
-            type="submit"
-            className="px-5 py-2.5 bg-cyber-blue hover:bg-cyber-blue-dark text-slate-100 font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5"
-          >
-            <Sparkles size={14} /> Analyze Link
-          </button>
-        </form>
-
-        {/* Suggestion Chips */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Preset Analysis:</span>
-          <button 
-            onClick={() => runPresetQuery('rahul', 'amit')}
-            className="px-3 py-1 bg-cyber-dark hover:border-cyber-blue/50 text-slate-300 rounded border border-cyber-border text-[11px] font-medium"
-          >
-            Rahul Sharma ➔ Amit Verma
-          </button>
-          <button 
-            onClick={() => runPresetQuery('rahul', 'vikram')}
-            className="px-3 py-1 bg-cyber-dark hover:border-cyber-blue/50 text-slate-300 rounded border border-cyber-border text-[11px] font-medium"
-          >
-            Rahul Sharma ➔ Vikram Malhotra
-          </button>
-          <button 
-            onClick={() => runPresetQuery('priya', 'vikram')}
-            className="px-3 py-1 bg-cyber-dark hover:border-cyber-blue/50 text-slate-300 rounded border border-cyber-border text-[11px] font-medium"
-          >
-            Priya Nair ➔ Vikram Malhotra
-          </button>
-        </div>
-      </div>
-
-      {/* Main Results Board */}
-      {activePath ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Path Visualizer */}
-          <div className="lg:col-span-2 bg-cyber-darker p-5 rounded-xl border border-cyber-border space-y-6">
-            <div className="flex items-center justify-between border-b border-cyber-border/60 pb-3">
-              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                <Link2 size={16} className="text-cyber-blue" />
-                Connection Chain Graph
-              </h3>
-              <span className="text-[10px] text-slate-400 font-mono">Cognitive Path Trace</span>
-            </div>
-
-            {/* Vertical Flow Steps */}
-            <div className="space-y-0.5 relative pl-4 sm:pl-8">
-              {/* Vertical line connector */}
-              <div className="absolute left-[31px] sm:left-[47px] top-6 bottom-6 w-0.5 bg-gradient-to-b from-cyber-blue to-cyber-red-dark"></div>
-
-              {activePath.pathSteps.map((step, idx) => {
-                const isEntity = step.type === 'entity';
-                return (
-                  <div key={idx} className="relative flex gap-4 items-center">
-                    {/* Circle Icon or Line Connector Point */}
-                    <div className="z-10 flex items-center justify-center">
-                      {isEntity ? (
-                        <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-cyber-dark border-2 border-cyber-blue flex items-center justify-center shadow-lg">
-                          {getStepIcon(step.icon)}
-                        </div>
-                      ) : (
-                        <div className="w-9 h-6 sm:w-11 sm:h-8 flex items-center justify-center">
-                          <div className="w-3.5 h-3.5 rounded-full bg-cyber-red border-2 border-cyber-dark flex items-center justify-center animate-pulse">
-                            <span className="w-1 h-1 bg-white rounded-full"></span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Step Card Content */}
-                    <div className={`flex-1 p-3 rounded-lg border ${
-                      isEntity 
-                        ? 'bg-cyber-dark/50 border-cyber-border hover:border-cyber-blue/40' 
-                        : 'bg-cyber-red/5 border-cyber-red/20 border-dashed text-cyber-red'
-                    } transition-colors my-1.5`}>
-                      {isEntity ? (
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="text-xs font-bold text-slate-200">{step.name}</h4>
-                            <p className="text-[10px] text-slate-400">{step.subtitle}</p>
-                          </div>
-                          <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded bg-cyber-light border border-cyber-border text-slate-500 font-mono">
-                            {step.category}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between items-center text-xs">
-                          <div>
-                            <span className="font-bold uppercase tracking-wider text-[10px] block">Relationship: {step.relation}</span>
-                            <span className="text-[10px] text-slate-300 font-semibold">{step.detail}</span>
-                          </div>
-                          <span className="text-[9px] font-mono font-bold bg-cyber-red/10 border border-cyber-red/20 px-2 py-0.5 rounded">
-                            {step.source}
-                          </span>
-                        </div>
-                      )}
+                {/* Render explainable path diagram if available */}
+                {isAI && msg.path && (
+                  <div className="mt-4 pt-3 border-t border-cyber-border space-y-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Explainable Connection Route:</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {msg.path.map((step, sIdx) => {
+                        const isEntity = step.type !== 'edge';
+                        return (
+                          <React.Fragment key={sIdx}>
+                            {isEntity ? (
+                              <div className="flex items-center gap-1.5 bg-slate-50 border border-cyber-border p-2 rounded text-xs shadow-sm">
+                                {getStepIcon(step.type)}
+                                <span className="font-bold text-slate-700">{step.name}</span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center">
+                                <span className="text-[8px] font-mono font-bold text-cyber-red px-1 bg-cyber-red/5 border border-cyber-red/10 rounded">
+                                  {step.relation}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-bold">➔</span>
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                )}
 
-          {/* Connection Summary & Evidence Details */}
-          <div className="space-y-6">
-            {/* Quick Metrics Panel */}
-            <div className="bg-cyber-darker p-5 rounded-xl border border-cyber-border space-y-4 text-center">
-              <div className="border-b border-cyber-border/60 pb-3 text-left">
-                <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Analysis Summary</h4>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-cyber-dark/50 border border-cyber-border p-3 rounded-lg">
-                  <span className="text-[10px] text-slate-500 uppercase font-bold block mb-1">Confidence</span>
-                  <span className="text-2xl font-black text-cyber-blue font-mono">{activePath.confidence}</span>
-                </div>
-                <div className="bg-cyber-dark/50 border border-cyber-border p-3 rounded-lg">
-                  <span className="text-[10px] text-slate-500 uppercase font-bold block mb-1">Risk Score</span>
-                  <span className="text-2xl font-black text-cyber-red font-mono">{activePath.riskScore}/100</span>
-                </div>
-              </div>
-              <div className="bg-cyber-success/5 border border-cyber-success/20 rounded p-2.5 flex items-center gap-2 text-left">
-                <CheckCircle2 size={16} className="text-cyber-success shrink-0" />
-                <p className="text-[10px] text-cyber-success font-semibold leading-normal">
-                  All connection edges in this chain are backed by verified records.
-                </p>
-              </div>
-            </div>
-
-            {/* Supporting Evidence Items */}
-            <div className="bg-cyber-darker p-5 rounded-xl border border-cyber-border space-y-4">
-              <div className="border-b border-cyber-border/60 pb-3 flex items-center justify-between">
-                <h4 className="text-xs font-extrabold text-slate-300 uppercase tracking-wider">Supporting Evidence</h4>
-                <span className="text-[10px] text-slate-500 font-mono">{activePath.evidence.length} Files</span>
-              </div>
-
-              <div className="space-y-3">
-                {activePath.evidence.map((ev, idx) => (
-                  <div key={idx} className="bg-cyber-dark/50 border border-cyber-border p-3 rounded-lg space-y-2 hover:border-cyber-blue/30 transition-all">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-mono font-bold text-cyber-blue">{ev.id}</span>
-                      <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded bg-cyber-light text-slate-400 border border-cyber-border">
-                        {ev.type}
+                {/* Render inline evidence card if available */}
+                {isAI && msg.evidenceCard && (
+                  <div className="mt-4 p-3 bg-slate-50 border border-cyber-border rounded-lg space-y-2">
+                    <div className="flex justify-between items-center border-b border-cyber-border pb-1.5">
+                      <div className="flex items-center gap-1">
+                        <FileText size={12} className="text-cyber-blue" />
+                        <span className="text-xs font-bold text-cyber-blue font-mono">{msg.evidenceCard.id}</span>
+                      </div>
+                      <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-cyber-success/15 text-cyber-success border border-cyber-success/20">
+                        Confidence: {msg.confidence || '90%'}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
-                      {ev.details}
-                    </p>
+                    <div className="text-[11px] text-slate-600 space-y-1">
+                      <div><span className="font-bold text-slate-500">Source:</span> {msg.evidenceCard.source}</div>
+                      <div><span className="font-bold text-slate-500">Date:</span> {msg.evidenceCard.date}</div>
+                      <p className="text-slate-600 mt-1 italic">"{msg.evidenceCard.details}"</p>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button 
+                        onClick={() => alert(`Redirecting to Network view...`)}
+                        className="px-2 py-1 bg-white hover:bg-slate-100 border border-cyber-border rounded text-[9px] font-bold text-slate-600 transition-all"
+                      >
+                        View on Network
+                      </button>
+                      <button 
+                        onClick={() => alert(`Reviewing evidence file: ${msg.evidenceCard.id}`)}
+                        className="px-2 py-1 bg-white hover:bg-slate-100 border border-cyber-border rounded text-[9px] font-bold text-slate-600 transition-all"
+                      >
+                        Inspect File
+                      </button>
+                    </div>
                   </div>
-                ))}
+                )}
               </div>
             </div>
+          );
+        })}
+      </div>
+
+      {/* Input panel & Suggested Chips */}
+      <div className="border-t border-cyber-border bg-white p-4 space-y-3 z-10">
+        
+        {/* Suggested chips list */}
+        {caseData.suggestedQuestions && (
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+            <span className="text-slate-400 font-bold uppercase tracking-wider mr-1">Suggested Analyst Queries:</span>
+            {caseData.suggestedQuestions.map((q, qIdx) => (
+              <button
+                key={qIdx}
+                onClick={() => handleSend(q)}
+                className="px-2.5 py-1 bg-slate-50 hover:bg-cyber-blue/10 hover:border-cyber-blue/30 text-slate-600 hover:text-cyber-blue rounded border border-cyber-border transition-colors font-medium"
+              >
+                {q}
+              </button>
+            ))}
           </div>
-        </div>
-      ) : showIncomplete ? (
-        /* Need More Information */
-        <div className="bg-cyber-darker border border-cyber-red/20 rounded-xl p-8 text-center max-w-2xl mx-auto space-y-4">
-          <div className="w-12 h-12 rounded-full bg-cyber-red/10 border border-cyber-red/20 flex items-center justify-center text-cyber-red mx-auto animate-bounce">
-            <HelpCircle size={24} />
-          </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-bold text-slate-200 uppercase tracking-wider">Need More Information</h3>
-            <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-              We could not resolve the relationship path for this query. The neural engine requires at least two valid entities (e.g. Person, Phone, Vehicle) to trace links.
-            </p>
-          </div>
-          <div className="pt-4 border-t border-cyber-border/60 text-left space-y-3">
-            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Search Guidelines:</h4>
-            <ul className="text-xs text-slate-400 space-y-1.5 list-disc pl-4">
-              <li>Mention two suspects by name, e.g., <code className="bg-cyber-dark px-1.5 py-0.5 rounded text-[11px] text-cyber-blue font-mono font-bold">Rahul</code> and <code className="bg-cyber-dark px-1.5 py-0.5 rounded text-[11px] text-cyber-blue font-mono font-bold">Amit</code>.</li>
-              <li>Alternatively, run one of the preset links using the chips above.</li>
-              <li>Verify that names match database spelling: <span className="text-slate-200 font-semibold">Rahul Sharma, Amit Verma, Vikram Malhotra, Priya Nair</span>.</li>
-            </ul>
-          </div>
-        </div>
-      ) : (
-        /* Initial Screen */
-        <div className="bg-cyber-darker border border-cyber-border rounded-xl p-12 text-center max-w-2xl mx-auto space-y-6">
-          <div className="w-16 h-16 rounded-full bg-cyber-blue/10 border border-cyber-blue/20 flex items-center justify-center text-cyber-blue mx-auto animate-pulse">
-            <SearchCode size={32} />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-lg font-black text-slate-200 uppercase tracking-wider">Cognitive Search Engine</h3>
-            <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-              Enter suspect names or ID numbers in the query box above to discover cross-entity relationship links and supporting documentation logs.
-            </p>
-          </div>
-          <div className="flex justify-center gap-4 pt-4 text-xs font-mono">
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-cyber-blue"></span>
-              91% Max Precision
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-cyber-warning animate-pulse"></span>
-              Real-time Intelligence
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+
+        {/* Input box form */}
+        <form 
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSend(inputVal);
+          }}
+          className="flex gap-2"
+        >
+          <input
+            type="text"
+            placeholder="Ask anything about this case (e.g. How is Rahul connected to Amit?)..."
+            value={inputVal}
+            onChange={(e) => setInputVal(e.target.value)}
+            className="flex-1 px-4 py-2.5 text-xs bg-slate-50 border border-cyber-border rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:border-cyber-blue transition-all"
+          />
+          <button
+            type="submit"
+            className="px-4 py-2.5 bg-cyber-blue hover:bg-cyber-blue-dark text-white rounded-lg text-xs font-bold transition-all shadow flex items-center gap-1.5"
+          >
+            <Send size={12} /> Query
+          </button>
+        </form>
+      </div>
+
     </div>
   );
 }

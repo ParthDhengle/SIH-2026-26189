@@ -1,58 +1,74 @@
-import React from 'react';
-import { Search, Shield, User, ChevronDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, User, ShieldCheck } from 'lucide-react';
 
-export default function Topbar({ cases, currentCaseId, setCurrentCaseId }) {
-  const currentCase = cases.find(c => c.id === currentCaseId) || cases[0];
+export default function Topbar() {
+  const [showProfilePopover, setShowProfilePopover] = useState(false);
 
   return (
-    <header className="h-16 border-b border-cyber-border bg-cyber-darker flex items-center justify-between px-6 sticky top-0 z-40">
-      {/* Active Case Selector */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 bg-cyber-dark px-3 py-1.5 rounded-lg border border-cyber-border hover:border-cyber-blue/50 transition-colors cursor-pointer relative group">
-          <Shield size={16} className="text-cyber-blue" />
-          <div className="flex flex-col text-left">
-            <span className="text-[10px] text-slate-500 font-bold uppercase leading-none">
-              Active Case File
-            </span>
-            <select
-              value={currentCaseId}
-              onChange={(e) => setCurrentCaseId(e.target.value)}
-              className="bg-transparent text-sm font-semibold text-slate-200 border-none outline-none pr-6 cursor-pointer appearance-none"
-            >
-              {cases.map((c) => (
-                <option key={c.id} value={c.id} className="bg-cyber-dark text-slate-200">
-                  {c.id} • {c.name.length > 25 ? `${c.name.substring(0, 25)}...` : c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <ChevronDown size={14} className="text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-        </div>
+    <header className="h-16 border-b border-cyber-border bg-cyber-darker flex items-center justify-between px-6 sticky top-0 z-20">
+      {/* Title / Status Branding */}
+      <div className="flex items-center gap-2">
+        <ShieldCheck size={18} className="text-cyber-blue" />
+        <span className="text-xs font-bold text-slate-700 tracking-wide uppercase">
+          National Intelligence Portal
+        </span>
       </div>
 
       {/* Global Search Bar */}
       <div className="w-96 relative">
         <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <Search size={16} className="text-slate-500" />
+          <Search size={16} className="text-slate-400" />
         </span>
         <input
           type="text"
-          placeholder="Search entities, phone numbers, vehicle logs..."
-          className="w-full pl-9 pr-4 py-1.5 text-sm bg-cyber-dark border border-cyber-border rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyber-blue focus:ring-1 focus:ring-cyber-blue transition-all"
+          placeholder="Search global intelligence files..."
+          className="w-full pl-9 pr-4 py-1.5 text-xs bg-cyber-dark border border-cyber-border rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:border-cyber-blue focus:ring-1 focus:ring-cyber-blue transition-all"
         />
       </div>
 
       {/* Investigator Profile */}
-      <div className="flex items-center gap-3 pl-4 border-l border-cyber-border">
+      <div 
+        onClick={() => setShowProfilePopover(!showProfilePopover)}
+        className="flex items-center gap-3 pl-4 border-l border-cyber-border cursor-pointer select-none relative"
+      >
         <div className="text-right">
-          <h4 className="text-xs font-bold text-slate-200">Agent Mayur</h4>
-          <p className="text-[10px] text-cyber-blue font-semibold uppercase tracking-wider">
+          <h4 className="text-xs font-bold text-slate-800">Agent Mayuri</h4>
+          <p className="text-[9px] text-cyber-blue font-bold uppercase tracking-wider">
             Senior Investigator
           </p>
         </div>
-        <div className="w-9 h-9 rounded-full bg-cyber-blue/10 border border-cyber-blue/40 flex items-center justify-center text-cyber-blue">
+        <div className="w-9 h-9 rounded-full bg-cyber-blue/10 border border-cyber-blue/20 flex items-center justify-center text-cyber-blue hover:bg-cyber-blue/20 transition-all">
           <User size={18} />
         </div>
+
+        {/* Profile Popover Details */}
+        {showProfilePopover && (
+          <div className="absolute right-0 top-11 w-56 bg-white border border-cyber-border rounded-xl shadow-xl p-4 space-y-3 z-50 text-slate-800 text-xs text-left animate-in fade-in zoom-in-95 duration-100">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+              <div className="w-8 h-8 rounded-full bg-cyber-blue/10 border border-cyber-blue/20 flex items-center justify-center text-cyber-blue font-black">
+                M
+              </div>
+              <div>
+                <h5 className="font-extrabold text-slate-800">Agent Mayuri</h5>
+                <span className="text-[9px] text-slate-400 font-bold uppercase">Senior Analyst</span>
+              </div>
+            </div>
+            <div className="space-y-1.5 font-sans">
+              <div className="flex justify-between text-[10px]">
+                <span className="text-slate-400 font-bold uppercase">Badge ID:</span>
+                <span className="text-slate-700 font-mono font-bold">AGENT-9942</span>
+              </div>
+              <div className="flex justify-between text-[10px]">
+                <span className="text-slate-400 font-bold uppercase">Clearance:</span>
+                <span className="text-cyber-blue font-bold">Level 4 (TS)</span>
+              </div>
+              <div className="flex justify-between text-[10px]">
+                <span className="text-slate-400 font-bold uppercase">Status:</span>
+                <span className="text-cyber-success font-bold">Active Duty</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );

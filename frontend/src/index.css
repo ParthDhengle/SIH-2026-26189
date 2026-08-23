@@ -1,38 +1,38 @@
 @import "tailwindcss";
 
 @theme {
-  --color-cyber-darkest: #030712;
-  --color-cyber-darker: #0b0f19;
-  --color-cyber-dark: #111827;
-  --color-cyber-light: #1f2937;
-  --color-cyber-border: #1f2937;
-  --color-cyber-blue: #3b82f6;
+  --color-cyber-darkest: #f8fafc; /* Main application background */
+  --color-cyber-darker: #ffffff;  /* Panel, Sidebar, Header backgrounds */
+  --color-cyber-dark: #f1f5f9;    /* Card & Table headers, background hover states */
+  --color-cyber-light: #cbd5e1;   /* Hover accents */
+  --color-cyber-border: #e2e8f0;  /* Standard border borders */
+  --color-cyber-blue: #2563eb;    /* Corporate primary blue */
   --color-cyber-blue-dark: #1d4ed8;
-  --color-cyber-red: #ef4444;
-  --color-cyber-red-dark: #b91c1c;
-  --color-cyber-warning: #f59e0b;
-  --color-cyber-success: #10b981;
+  --color-cyber-red: #dc2626;     /* Suspicious/critical indicator */
+  --color-cyber-red-dark: #991b1b;
+  --color-cyber-warning: #ea580c; /* High/medium risk alert orange */
+  --color-cyber-success: #16a34a; /* Verified/success green */
 }
 
-/* Custom scrollbar to match dark law-enforcement console aesthetics */
+/* Custom scrollbar matching clean light theme console */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #030712;
+  background: #f8fafc;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f2937;
+  background: #e2e8f0;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3b82f6;
+  background: #cbd5e1;
 }
 
 body {
-  background-color: #030712;
-  color: #f3f4f6;
+  background-color: #f8fafc;
+  color: #0f172a;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   margin: 0;
   padding: 0;
@@ -43,5 +43,5 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background-color: #030712;
+  background-color: #f8fafc;
 }
