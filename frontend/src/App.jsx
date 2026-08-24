@@ -13,10 +13,11 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [cases, setCases] = useState(initialCasesList);
   const [casesFullData, setCasesFullData] = useState(casesData);
-  const [currentCaseId, setCurrentCaseId] = useState('CASE-2026-001');
+  const [currentCaseId, setCurrentCaseId] = useState(() => initialCasesList[0]?.id || '');
 
   // Fetch full dataset for the active case, providing a safe fallback object for newly created custom cases
-  const selectedCaseData = casesFullData[currentCaseId] || {
+  const selectedCaseData = {
+    ...(casesFullData[currentCaseId] || {
     id: currentCaseId,
     name: cases.find(c => c.id === currentCaseId)?.name || "New Case File",
     type: cases.find(c => c.id === currentCaseId)?.type || "General Investigation",
@@ -34,7 +35,10 @@ export default function App() {
     evidence: [],
     suggestedQuestions: [],
     chatResponses: {}
+    })
   };
+
+  selectedCaseData.backendReady = Boolean(casesFullData[currentCaseId] || cases.some(c => c.id === currentCaseId));
 
   // State action to mark a case as solved
   const handleMarkCaseAsSolved = (caseId) => {
@@ -95,9 +99,9 @@ export default function App() {
   };
 
   // Login Gate check
-  if (!isLoggedIn) {
-    return <Login onLoginSuccess={() => setIsLoggedIn(true)} />;
-  }
+  // if (!isLoggedIn) {
+  //   return <Login onLoginSuccess={() => setIsLoggedIn(true)} />;
+  // }
 
   return (
     <div className="flex bg-cyber-darkest text-slate-800 min-h-screen">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Send, 
   Sparkles, 
@@ -14,21 +14,74 @@ import {
   TrendingUp
 } from 'lucide-react';
 
-export default function Investigation({ caseData }) {
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+function nodeType(entityType) {
+  const type = String(entityType || '').toLowerCase();
+  return ['person', 'phone', 'vehicle', 'location'].includes(type) ? type : 'entity';
+}
+
+function toFlowGraph(graph) {
+  const nodes = (graph.nodes || []).map((node, index) => ({
+    id: String(node.entity_id),
+    type: nodeType(node.entity_type),
+    position: { x: 120 + (index % 4) * 260, y: 100 + Math.floor(index / 4) * 180 },
+    data: {
+      label: node.canonical_name || node.entity_id,
+      role: node.entity_type,
+      status: node.status || 'Discovered',
+    },
+  }));
+  const edges = (graph.edges || []).map((edge) => ({
+    id: String(edge.relationship_id || `${edge.from_entity_id}-${edge.to_entity_id}`),
+    source: String(edge.from_entity_id),
+    target: String(edge.to_entity_id),
+    label: edge.relationship_type || 'RELATED_TO',
+  }));
+  return { nodes, edges };
+}
+
+function mergeFlowGraphs(current, incoming) {
+  return {
+    nodes: [...current.nodes, ...incoming.nodes.filter((node) => !current.nodes.some((existing) => existing.id === node.id))],
+    edges: [...current.edges, ...incoming.edges.filter((edge) => !current.edges.some((existing) => existing.id === edge.id))],
+  };
+}
+
+export default function Investigation({ caseData, onGraphEvent, findings, setFindings, onFindingSelect, onInvestigationStart, onInvestigationComplete }) {
   // Encapsulated chat history state mapped per case ID
-  const [chatHistories, setChatHistories] = useState({
-    "CASE-2026-001": [
-      { sender: 'ai', text: 'Cognitive Connection System initialized. Ask anything about Operation Blackout.' }
-    ],
-    "CASE-2026-002": [
-      { sender: 'ai', text: 'Cognitive Connection System initialized. Ask anything about the Sector 15 Cyber Extortion group.' }
-    ],
-    "CASE-2026-003": [
-      { sender: 'ai', text: 'Cognitive Connection System initialized. Ask anything about the Vikram Hawala Syndicate.' }
-    ]
-  });
+  const [chatHistories, setChatHistories] = useState({});
 
   const [inputVal, setInputVal] = useState('');
+  const [investigationStatus, setInvestigationStatus] = useState('Ready');
+  const [pendingSessionId, setPendingSessionId] = useState(null);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setInvestigationStatus('Loading conversation');
+    fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseData.id)}/conversation`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('History unavailable')))
+      .then((history) => {
+        if (cancelled) return;
+        if (history.session?.session_id) setActiveSessionId(history.session.session_id);
+        const messages = (history.messages || []).map((message) => ({
+          sender: message.role === 'investigator' ? 'user' : 'ai',
+          text: message.content,
+        }));
+        setChatHistories((current) => ({
+          ...current,
+          [caseData.id]: messages.length ? messages : [{ sender: 'ai', text: 'Cognitive system initialized. Ask a question regarding this case.' }],
+        }));
+        setFindings(history.findings || []);
+        if (history.graph) onGraphEvent((current) => mergeFlowGraphs(current, toFlowGraph(history.graph)));
+        setInvestigationStatus(history.session?.status === 'COMPLETED' ? 'Investigation completed' : 'Ready');
+      })
+      .catch(() => {
+        if (!cancelled) setInvestigationStatus('Ready');
+      });
+    return () => { cancelled = true; };
+  }, [caseData.id, setFindings]);
 
   // Retrieve current active chat history
   const activeChat = chatHistories[caseData.id] || [
@@ -36,10 +89,131 @@ export default function Investigation({ caseData }) {
   ];
 
   const updateActiveChat = (newMessages) => {
-    setChatHistories({
-      ...chatHistories,
-      [caseData.id]: newMessages
+    setChatHistories((current) => ({ ...current, [caseData.id]: newMessages }));
+  };
+
+  const appendActiveChat = (message) => {
+    setChatHistories((current) => ({
+      ...current,
+      [caseData.id]: [...(current[caseData.id] || []), message]
+    }));
+  };
+
+  const runLiveInvestigation = async (text, nextChat) => {
+    if (!caseData.backendReady) {
+      setInvestigationStatus('Case is not persisted');
+      updateActiveChat([
+        ...nextChat,
+        {
+          sender: 'ai',
+          text: 'This case exists only in the local workspace and has not been saved to the investigation database. Persist this case before starting live analysis.',
+          isIncomplete: true
+        }
+      ]);
+      return;
+    }
+    onInvestigationStart();
+    setInvestigationStatus('Creating query context');
+    const queryResponse = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseData.id)}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: text, session_id: activeSessionId })
     });
+    const query = await queryResponse.json();
+    if (!queryResponse.ok) throw new Error(query.detail || 'Query failed');
+    if (query.status === 'CLARIFICATION_REQUIRED') {
+      setPendingSessionId(query.session_id);
+      updateActiveChat([...nextChat, { sender: 'ai', text: query.question, isIncomplete: true }]);
+      setInvestigationStatus('Clarification required');
+      return;
+    }
+
+    setActiveSessionId(query.session_id);
+    await startStream(query.session_id, nextChat);
+  };
+
+  const startStream = async (sessionId, nextChat) => {
+    setPendingSessionId(null);
+    setActiveSessionId(sessionId);
+
+    const socket = new WebSocket(`${API_BASE.replace(/^http/, 'ws')}/api/investigations/${sessionId}/stream`);
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === 'node_added' && message.node?.entity_id) {
+        const node = message.node;
+        onGraphEvent(current => {
+          if (current.nodes.some(existing => existing.id === node.entity_id)) return current;
+          return {
+            ...current,
+            nodes: [...current.nodes, {
+              id: node.entity_id,
+              type: nodeType(node.entity_type),
+              position: { x: 120 + (current.nodes.length % 4) * 260, y: 100 + Math.floor(current.nodes.length / 4) * 180 },
+              data: { label: node.canonical_name || node.entity_id, role: node.entity_type, status: node.status || 'Discovered' }
+            }]
+          };
+        });
+      }
+      if (message.type === 'edge_added' && message.edge?.from_entity_id && message.edge?.to_entity_id) {
+        const edge = message.edge;
+        onGraphEvent(current => {
+          const edgeId = edge.relationship_id || `${edge.from_entity_id}-${edge.to_entity_id}-${edge.relationship_type}`;
+          if (current.edges.some(existing => existing.id === edgeId)) return current;
+          return { ...current, edges: [...current.edges, { id: edgeId, source: edge.from_entity_id, target: edge.to_entity_id, label: edge.relationship_type || 'RELATED_TO', animated: true }] };
+        });
+      }
+      if (message.type === 'entity_processing') setInvestigationStatus(`Processing entity at depth ${message.depth}`);
+      if (message.type === 'depth_changed') setInvestigationStatus(`Depth ${message.depth}`);
+      if (message.type === 'investigation_completed') {
+        setInvestigationStatus('Investigation completed');
+        if (message.result?.graph) onGraphEvent((current) => mergeFlowGraphs(current, toFlowGraph(message.result.graph)));
+        if (message.result?.findings) setFindings((current) => [
+          ...current,
+          ...message.result.findings.filter((finding) => !current.some((item) => item.finding_id === finding.finding_id)),
+        ]);
+        appendActiveChat({ sender: 'ai', text: 'Investigation completed. The final knowledge graph and findings are ready.' });
+        onInvestigationComplete();
+        socket.close();
+      }
+      if (message.type === 'findings_ready') {
+        setFindings((current) => [
+          ...current,
+          ...(message.findings || []).filter((finding) => !current.some((item) => item.finding_id === finding.finding_id)),
+        ]);
+        appendActiveChat({ sender: 'ai', text: `${message.findings?.length || 0} graph-backed investigative findings are ready below.` });
+      }
+      if (message.type === 'investigation_error') {
+        setInvestigationStatus('Investigation failed');
+        updateActiveChat([...nextChat, { sender: 'ai', text: 'The investigation could not be completed. Check the backend connection and case data.', isIncomplete: true }]);
+        socket.close();
+      }
+    };
+    socket.onerror = () => setInvestigationStatus('Stream unavailable');
+    await new Promise((resolve, reject) => {
+      socket.onopen = resolve;
+      socket.onerror = reject;
+    });
+    const startResponse = await fetch(`${API_BASE}/api/investigations/${sessionId}/start`, { method: 'POST' });
+    if (!startResponse.ok) throw new Error('Investigation could not start');
+    setInvestigationStatus('Starting investigation');
+  };
+
+  const clarifyAndStart = async (text, nextChat) => {
+    onInvestigationStart();
+    setInvestigationStatus('Updating query context');
+    const response = await fetch(`${API_BASE}/api/investigations/${pendingSessionId}/clarify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: text, session_id: pendingSessionId })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || 'Clarification failed');
+    if (payload.status === 'CLARIFICATION_REQUIRED') {
+      updateActiveChat([...nextChat, { sender: 'ai', text: payload.question, isIncomplete: true }]);
+      setInvestigationStatus('Clarification required');
+      return;
+    }
+    await startStream(payload.session_id, nextChat);
   };
 
   const handleSend = (text) => {
@@ -50,8 +224,13 @@ export default function Investigation({ caseData }) {
     updateActiveChat(nextChat);
     setInputVal('');
 
-    // Simulate AI response delay
-    setTimeout(() => {
+    const action = pendingSessionId ? clarifyAndStart(text, nextChat) : runLiveInvestigation(text, nextChat);
+    action.catch(() => {
+      setInvestigationStatus('Backend unavailable');
+      updateActiveChat([...nextChat, { sender: 'ai', text: 'The live investigation service is unavailable. Start FastAPI and try again.', isIncomplete: true }]);
+    });
+    /* Keep the existing mock experience available when no backend is configured. */
+    if (!API_BASE) setTimeout(() => {
       const queryKey = text.toLowerCase().trim().replace(/[?.]$/g, '');
       
       // Look up matching pre-computed response in active case data
@@ -187,10 +366,19 @@ export default function Investigation({ caseData }) {
             </div>
           );
         })}
+        {findings.length > 0 && (
+          <div className="max-w-2xl space-y-2">
+            <h3 className="text-[10px] font-black uppercase tracking-wider text-slate-400">Investigation Findings</h3>
+            {findings.map((finding) => (
+              <FindingCard key={finding.finding_id} finding={finding} onSelect={onFindingSelect} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Input panel & Suggested Chips */}
       <div className="border-t border-cyber-border bg-white p-4 space-y-3 z-10">
+        <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyber-blue">Investigation status: {investigationStatus}</div>
         
         {/* Suggested chips list */}
         {caseData.suggestedQuestions && (
@@ -233,5 +421,31 @@ export default function Investigation({ caseData }) {
       </div>
 
     </div>
+  );
+}
+
+function FindingCard({ finding, onSelect }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => { setExpanded(!expanded); onSelect(expanded ? null : finding); }}
+      className="w-full text-left bg-white border border-cyber-border rounded-lg p-3 shadow-sm hover:border-cyber-blue transition-colors"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-xs font-bold text-slate-800">{finding.title}</span>
+        <span className="text-[10px] font-mono text-cyber-blue">{Math.round((finding.confidence || 0) * 100)}%</span>
+      </div>
+      <p className="mt-1 text-[11px] text-slate-500">{finding.summary}</p>
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 text-[10px] text-slate-600">
+          <div>Entities: {finding.entity_ids.join(', ') || 'None'}</div>
+          <div>Relationships: {finding.relationship_ids.join(', ') || 'None'}</div>
+          {finding.evidence.map((evidence) => (
+            <div key={evidence.source_record_id} className="font-mono">Evidence: {evidence.source_record_id} {evidence.description}</div>
+          ))}
+        </div>
+      )}
+    </button>
   );
 }

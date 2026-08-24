@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   ArrowLeft, 
   Activity, 
@@ -22,6 +22,22 @@ import Evidence from './Evidence';
 
 export default function CaseWorkspace({ caseData, setCurrentPage, onMarkAsSolved }) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [liveGraph, setLiveGraph] = useState({ nodes: caseData.nodes || [], edges: caseData.edges || [] });
+  const [findings, setFindings] = useState([]);
+  const [activeFinding, setActiveFinding] = useState(null);
+
+  const handleFindingSelect = (finding) => {
+    setActiveFinding(finding);
+    if (finding) setActiveTab('network');
+  };
+
+  const handleClearHighlight = () => setActiveFinding(null);
+
+  useEffect(() => {
+    setLiveGraph({ nodes: caseData.nodes || [], edges: caseData.edges || [] });
+    setFindings([]);
+    setActiveFinding(null);
+  }, [caseData]);
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -260,9 +276,17 @@ export default function CaseWorkspace({ caseData, setCurrentPage, onMarkAsSolved
       case 'overview':
         return <OverviewTab />;
       case 'investigation':
-        return <Investigation caseData={caseData} />;
       case 'network':
-        return <NetworkGraph caseData={caseData} />;
+        return (
+          <>
+            <div className={activeTab === 'investigation' ? 'h-full' : 'hidden'}>
+              <Investigation caseData={caseData} onGraphEvent={setLiveGraph} findings={findings} setFindings={setFindings} onFindingSelect={handleFindingSelect} onInvestigationStart={() => setActiveTab('network')} onInvestigationComplete={() => setActiveTab('investigation')} />
+            </div>
+            <div className={activeTab === 'network' ? 'h-full' : 'hidden'}>
+              <NetworkGraph caseData={caseData} liveGraph={liveGraph} activeFinding={activeFinding} onClearHighlight={handleClearHighlight} />
+            </div>
+          </>
+        );
       case 'patterns':
         return <PatternAnalysis caseData={caseData} />;
       case 'timeline':

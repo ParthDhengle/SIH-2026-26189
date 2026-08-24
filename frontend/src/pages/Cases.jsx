@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Plus, Search, FolderOpen, AlertCircle } from 'lucide-react';
 import { initialCasesList } from '../data/mockData';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export default function Cases({ cases, setCases, setCurrentCaseId, setCurrentPage }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -13,11 +15,27 @@ export default function Cases({ cases, setCases, setCurrentCaseId, setCurrentPag
   const [newCasePriority, setNewCasePriority] = useState('High');
   const [newCaseDesc, setNewCaseDesc] = useState('');
 
-  const handleCreateCase = (e) => {
+  const handleCreateCase = async (e) => {
     e.preventDefault();
     if (!newCaseName.trim()) return;
 
-    const caseId = `CASE-2026-0${cases.length + 1}`;
+    const response = await fetch(`${API_BASE}/api/cases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: newCaseName.trim(),
+        case_type: newCaseType,
+        description: newCaseDesc.trim() || null,
+        created_by: 'investigator'
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      window.alert(payload.detail?.message || payload.detail || 'Case creation failed.');
+      return;
+    }
+
+    const caseId = payload.case.case_number;
     const newCase = {
       id: caseId,
       name: newCaseName,

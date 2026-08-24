@@ -139,10 +139,11 @@ const nodeTypes = {
   person: CustomPersonNode,
   phone: CustomPhoneNode,
   vehicle: CustomVehicleNode,
-  location: CustomLocationNode
+  location: CustomLocationNode,
+  entity: CustomLocationNode
 };
 
-export default function NetworkGraph({ caseData }) {
+export default function NetworkGraph({ caseData, liveGraph, activeFinding, onClearHighlight }) {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
@@ -150,11 +151,11 @@ export default function NetworkGraph({ caseData }) {
 
   // Sync state whenever caseData changes
   useEffect(() => {
-    setNodes(caseData.nodes || []);
-    setEdges(caseData.edges || []);
+    setNodes(liveGraph?.nodes || caseData.nodes || []);
+    setEdges(liveGraph?.edges || caseData.edges || []);
     setSelectedNode(null);
     setSearchQuery('');
-  }, [caseData]);
+  }, [caseData, liveGraph]);
 
   // Handle node selection
   const onNodeClick = (event, node) => {
@@ -175,6 +176,21 @@ export default function NetworkGraph({ caseData }) {
       })
       .filter(c => c.node);
   };
+
+  const highlightedNodeIds = new Set(activeFinding?.entity_ids || []);
+  const highlightedEdgeIds = new Set(activeFinding?.relationship_ids || []);
+  const displayNodes = nodes.map(node => ({
+    ...node,
+    className: activeFinding && !highlightedNodeIds.has(node.id) ? 'opacity-30' : undefined,
+  }));
+  const displayEdges = edges.map(edge => ({
+    ...edge,
+    style: {
+      ...(edge.style || {}),
+      opacity: activeFinding && !highlightedEdgeIds.has(edge.id) ? 0.15 : 1,
+      strokeWidth: activeFinding && highlightedEdgeIds.has(edge.id) ? 3 : edge.style?.strokeWidth,
+    },
+  }));
 
   // Search filter
   const handleSearch = (e) => {
@@ -223,6 +239,16 @@ export default function NetworkGraph({ caseData }) {
           </button>
         </form>
 
+        {activeFinding && (
+          <button
+            type="button"
+            onClick={onClearHighlight}
+            className="absolute top-4 right-4 z-10 px-3 py-1.5 bg-white border border-cyber-border rounded-lg text-[10px] font-bold text-slate-600 hover:text-cyber-blue hover:border-cyber-blue shadow-sm"
+          >
+            Clear Highlight
+          </button>
+        )}
+
         {/* Legend */}
         <div className="absolute bottom-4 left-4 z-10 bg-white p-3 rounded-lg border border-cyber-border text-[9px] font-mono space-y-1.5 shadow-sm">
           <h5 className="font-bold text-slate-500 uppercase tracking-wider mb-2 border-b border-slate-100 pb-1">Node Legend</h5>
@@ -245,8 +271,8 @@ export default function NetworkGraph({ caseData }) {
         </div>
 
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={displayNodes}
+          edges={displayEdges}
           nodeTypes={nodeTypes}
           onNodeClick={onNodeClick}
           fitView
