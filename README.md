@@ -1,281 +1,318 @@
 # AI-Powered Investigation & Criminal Network Analysis System
-### Smart India Hackathon (SIH) 2026 – Problem Statement 26189
+Smart India Hackathon 2026 - Problem Statement 26189
 
-An advanced network analysis dashboard designed for law-enforcement and investigative analysts to trace, visualize, and query criminal syndicate connections.
+## 1. Problem Statement
 
----
+Investigative data is fragmented across authorized sources such as case records, communications, vehicles, locations, transactions, events, and evidence records. Relationships between these entities are difficult to discover manually, especially when investigators need to follow several degrees of connection.
 
-## 1. Project Overview
-Investigate AI solves the critical challenge of manual dossier analysis in criminal investigations. In traditional workflows, linking phone burner lines, vehicle plate numbers, coordinated cell tower coordinates, and bank transactions is highly fragmented. 
+Investigators need a focused system that can explore these relationships, show how entities are connected, and surface relevant investigative leads with traceable supporting evidence. This system supports investigation; it does not determine legal guilt.
 
-This system aggregates data across cases, resolves identical entities (Entity Resolution), and models relationships as a **Knowledge Graph**. By providing a conversational query interface alongside interactive React Flow graphs, it enables investigators to immediately uncover hidden syndicates and see the **evidence and confidence** behind every connection.
+## 2. Solution
 
----
+The prototype provides:
 
-## 2. How the System Works
-The operational pipeline represents the end-to-end flow of raw data to actionable intelligence:
+- A case-based investigation workspace
+- Natural-language investigator queries
+- Query clarification and database-backed entity resolution
+- Depth-limited recursive investigation of related entities
+- Neo4j Knowledge Graph construction
+- Realtime graph visualization during traversal
+- AI-assisted final pattern and connection analysis
+- Evidence-backed structured findings with confidence
+- Finding-to-graph path highlighting
+- Stateful follow-up investigation within the same case and session
+- Persistent investigation conversations and results in PostgreSQL
+
+The system identifies possible connections, relevant relationships, suspicious patterns, and investigative leads. It does not make legal determinations or claim that a person is guilty.
+
+## 3. End-to-End Investigation Workflow
 
 ```mermaid
 flowchart TD
-    A[1. Investigator Query] --> B[2. Authorized Data Integration]
-    B --> C[3. Entity Extraction]
-    C --> D[4. Entity Resolution]
-    D --> E[5. Recursive Graph Traversal]
-    E --> F[6. Knowledge Graph Generation]
-    F --> G[7. Threat Pattern Detection]
-    G --> H[8. Explainable AI Path Mapping]
-    H --> I[9. Investigation Insights]
+    A[Investigator] --> B[Create or select case]
+    B --> C[Natural-language query]
+    C --> D[Clarification and entity resolution]
+    D --> E[QueryContext with seed entities]
+    E --> F[Iterative DFS, max depth 8]
+    F --> G[get_data from PostgreSQL]
+    G --> H[Entity extraction and relevance filtering]
+    H --> I[Neo4j graph update]
+    I --> J[Realtime WebSocket graph events]
+    J --> F
+    F --> K[Final Knowledge Graph]
+    K --> L[Gemini Flash analysis]
+    L --> M[Structured findings and evidence]
+    M --> N[Frontend findings and graph highlighting]
+    N --> O[Follow-up query in same case/session]
 ```
 
-1.  **Investigator Query**: The investigator enters a query (e.g., *"How is Rahul connected to Amit?"*).
-2.  **Authorized Data Integration**: The system pulls structured/unstructured files (CDRs, FIRs, GPS logs, bank audits).
-3.  **Entity Extraction**: Identifies key entities: Persons, Phone Numbers, Vehicles, and Coordinates.
-4.  **Entity Resolution**: Collates multiple duplicate or fake identities belonging to the same suspect.
-5.  **Recursive Graph Traversal**: Traverses node connections dynamically across multiple degrees of separation.
-6.  **Knowledge Graph**: Builds a visual, multi-node network illustrating links.
-7.  **Pattern & Anomaly Detection**: Highlights suspicious behaviors (e.g., call/location co-location overlaps).
-8.  **Explainable AI**: Draws the exact, step-by-step path showing *why* a connection exists, rather than just asserting it.
-9.  **Investigation Insights**: Delivers verified evidence attachments and confidence percentages.
+1. An investigator creates or selects a persisted case.
+2. The investigator submits a natural-language query.
+3. The backend validates the case and resolves mentioned entities from PostgreSQL. Ambiguous or incomplete queries request clarification.
+4. A `QueryContext` preserves the case, original query, clarified query, resolved seed entities, target entities where available, and maximum depth.
+5. DFS initializes its stack with resolved query entities, not with the case itself.
+6. `get_data()` retrieves authorized structured data from PostgreSQL.
+7. Entity extraction, resolution, and relevance filtering produce graph nodes, relationships, evidence references, and traversal candidates.
+8. Entities and relationships are persisted to Neo4j. Node and edge events are streamed immediately to the frontend.
+9. Traversal continues until the stack is empty or maximum depth 8 is reached.
+10. The completed Knowledge Graph is retrieved and analyzed once by Gemini using the investigator's query and graph context.
+11. Structured findings are persisted and sent to the frontend.
+12. Investigators can select findings to highlight exact graph paths and submit follow-up queries using the same case, session, and graph.
 
----
+Final AI pattern detection runs after recursive traversal, not during every DFS iteration.
 
-## 3. Core Features
-*   **Case-wise Investigation Workspace**: Dedicated workspace per case containing Overview, Chat, Graph, Patterns, Timeline, and Evidence views.
-*   **Investigator-Driven Conversational Queries**: Ask relationship-centric questions and receive prompt, detailed paths.
-*   **Interactive React Flow Graph**: Drag, zoom, and select custom nodes (Suspects, Phones, Vehicles, Locations) to pull up side dossiers.
-*   **Stateful "Mark as Solved" Action**: Update case status reactively across the app workspace, directory table, and dashboard cards.
-*   **Suspicious Pattern Highlighting**: Automatically alerts on critical co-location and offshore bank ledger transactions.
-*   **Evidence Decryption Inspector**: Review cataloged documents and mock decrypt/download files.
+## 4. Recursive Investigation / DFS
 
----
+The existing investigation engine uses an iterative depth-first search:
 
-## 4. Important Concept: Explainable Connections
-Traditional systems simply tell the investigator:
-> "Rahul Sharma is connected to Amit Verma."
+- The stack starts with entity IDs resolved from the query context.
+- One entity is processed at a time.
+- `get_data()` retrieves the entity and its known relationships.
+- Entity services extract relevant entities, relationships, evidence, and candidates.
+- The graph service adds nodes and relationships to Neo4j.
+- Relevant undiscovered entities are pushed onto the stack.
+- Visited entity IDs prevent repeated processing and cycles.
+- Invalid or missing entities are completed without retry loops.
+- Entities at depth 8 can be processed and persisted but are not expanded.
+- Traversal ends when the stack is empty or the configured maximum depth is reached.
 
-This system rejects unexplained assertions. Instead, it traces and visualizes the **exact route**:
+The original and clarified query context remains available throughout traversal. DFS does not ask Gemini to choose the next entity and does not rewrite the investigation goal while exploring.
 
-```
-[Rahul Sharma (Suspect)] 
-       ↓ (Owns)
-[98XXXXXX12 (Airtel SIM)] 
-       ↓ (Called 14 times)
-[87XXXXXX09 (Burner Jio SIM)] 
-       ↓ (Owns)
-[Amit Verma (Associate)]
-```
-*   **Confidence**: `91%`
-*   **Supporting Evidence**: Call details record `CDR-1023` (14 Aug 2026, 10:42 PM) and coordinate site overlaps `GPS-1023`.
+## 5. Knowledge Graph
 
----
+Neo4j stores the investigation graph as stable entity nodes and relationship edges. A graph may connect records such as:
 
-## 5. Tech Stack
-The project currently uses the following technologies:
-
-| Layer | Technology | Details |
-| :--- | :--- | :--- |
-| **Frontend Core** | React 19, JavaScript (ES6+), Vite | High-performance client framework and bundler. |
-| **Styling** | Tailwind CSS v4, PostCSS | Custom corporate slate-light styling variables. |
-| **Visualization** | `@xyflow/react` (React Flow v12) | Interactive network mapping with custom node handles. |
-| **Charts** | Recharts | Radial threat risk meters and connection velocity trends. |
-| **Icons** | Lucide React | Clean, scalable vector indicators. |
-| **Backend Core** | Python (Skeletal Structure) | Initial empty directory package structure. |
-
----
-
-## 6. System Architecture
-
-```mermaid
-graph LR
-    User[Investigator Analyst] -->|1. Submit Query / Click Node| UI[React Frontend Dashboard]
-    UI -->|2. Route Internally| App[App State Controller]
-    App -->|3. Query State Ledger| DB[(Mock DB: mockData.js)]
-    DB -->|4. Return Dossier / Chat Responses| App
-    App -->|5. Render Tab View & Graphs| UI
+```text
+Person -> Phone -> Person -> Transaction -> Person
+       -> Vehicle -> Location -> Case/Event
 ```
 
----
+Relationships preserve metadata such as relationship type, confidence, source record ID, status, and validity timestamps where available. The graph is progressively constructed during DFS and streamed to the frontend, allowing investigators to watch the network develop instead of waiting for the final result.
 
-## 7. Project Structure
+## 6. AI Pattern Detection
 
-```bash
-CrimeGraph AI/
-├── backend/                  # Python Backend scaffolding (API entry points)
-│   ├── src/
-│   │   ├── models/           # Empty __init__.py placeholders for schemas
-│   │   ├── routes/           # Empty __init__.py placeholders for API endpoints
-│   │   ├── schema/           # Empty __init__.py placeholders for models
-│   │   └── services/         # Empty __init__.py placeholders for processing scripts
-│   ├── .env                  # Empty environment settings file
-│   ├── .gitignore            # Backend ignore configurations
-│   └── main.py               # Empty server entry point file
-├── frontend/                 # React Frontend Workspace
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Sidebar.jsx   # simplified menu navigation
-│   │   │   └── Topbar.jsx    # User profile popover panel (Agent Mayuri)
-│   │   ├── data/
-│   │   │   └── mockData.js   # Mock Database (Node lists, pre-computed paths)
-│   │   ├── pages/
-│   │   │   ├── Login.jsx           # Split-screen gateway form
-│   │   │   ├── Dashboard.jsx       # Global statistics and quick access folders
-│   │   │   ├── Cases.jsx           # Folders directory list & case-creator modal
-│   │   │   ├── CaseWorkspace.jsx   # Case wrapper (renders Overview and tabs)
-│   │   │   ├── Investigation.jsx   # AI query panel (Connection chain diagrams)
-│   │   │   ├── NetworkGraph.jsx    # React Flow canvas & dossier drawers
-│   │   │   ├── PatternAnalysis.jsx # Threat vector grid logs
-│   │   │   ├── Timeline.jsx        # Chronological vertical tracking feeds
-│   │   │   ├── Evidence.jsx        # Document vault & decryption modals
-│   │   │   └── Settings.jsx        # Basic system configurations
-│   │   ├── App.jsx           # Login gates, routing logs, central states
-│   │   ├── index.css         # Tailwind v4 slate color tokens
-│   │   └── main.jsx          # React DOM mounting
-│   ├── package.json          # Frontend packages
-│   └── vite.config.js        # Vite compiler rules
-└── README.md                 # Global developer manual
+Gemini Flash is used once, after DFS has completed and the final Knowledge Graph is available.
+
+```text
+Original query
++ Clarified query
++ Completed Knowledge Graph
++ Available evidence and source context
+                    |
+                    v
+             Gemini Flash
+                    |
+                    v
+       Structured investigation findings
 ```
 
----
+The Gemini request requires structured JSON findings containing titles, concise explanations, graph entity IDs, relationship IDs, confidence, and evidence references. The backend validates returned IDs against the graph and uses a graph-only fallback if Gemini is unavailable or fails.
 
-## 8. Data Flow
-1.  **Selection**: The user logs in and selects a case (e.g. `CASE-2026-001`) from the directory.
-2.  **State Loading**: `App.jsx` loads the specific case object from `mockData.js` and propagates the `caseData` state to all components.
-3.  **UI Propagation**:
-    *   `NetworkGraph.jsx` receives the active `nodes` and `edges` and builds the React Flow canvas.
-    *   `Investigation.jsx` loads the `chatResponses` map to filter and evaluate user inputs.
-    *   `Timeline.jsx` and `Evidence.jsx` map out case-specific logs and file lists.
-4.  **Updates**: Clicking "Mark as Solved" triggers a callback to `App.jsx` which updates the states in `cases` and `casesFullData`, propagating the change back to the Dashboard list and Cases table.
+Gemini does not control DFS, invent entities or relationships, replace PostgreSQL or Neo4j, or determine whether a person is legally guilty.
 
----
+## 7. Investigation Findings
 
-## 9. Database / Data Storage
-No live database server is currently connected:
-*   **Client Data Layer**: All dossiers are managed inside [`frontend/src/data/mockData.js`](file:///c:/Users/mayur/OneDrive/Desktop/programming/CrimeGraph%20AI/frontend/src/data/mockData.js) as structured JavaScript objects.
-*   **State Management**: React `useState` hooks manage cases, active dossiers, active directories, and chat message feeds during the current session (resets on page refresh).
+Findings appear in the Investigation Chat as compact expandable cards. A finding can contain:
 
----
+- A short title and summary
+- A cautious AI-generated explanation
+- Confidence
+- Stable entity IDs and relationship IDs
+- Supporting source records and evidence descriptions
 
-## 10. API / Backend
-No active API routes are implemented yet:
-*   **Backend Status**: The `backend/` folder represents a Python skeletal package structure. `main.py` is empty and serves as a placeholder.
-*   **Mock Integration**: The React frontend mocks API endpoints internally by using local key-lookup methods inside the data folder.
+Selecting a finding highlights its exact graph nodes and edges using stable IDs and dims unrelated graph elements. **Clear Highlight** restores the complete graph without refetching or rebuilding it.
 
----
+## 8. Investigation Chat + Graph Experience
 
-## 11. Frontend Architecture
-The frontend features three core components:
-1.  **Investigator Portal (Login)**: Secure gateway ensuring only authorized users bypass to the dashboard.
-2.  **Dashboard Grid**: Displays cross-case summaries, Recharts trends, and quick-access folders.
-3.  **Case Workspace**: Centralizes analytical operations under one window, avoiding scattered sidebar pages and keeping all data scoped strictly to the selected case.
+The existing workspace supports the following interaction:
 
----
-
-## 12. AI / ML Implementation
-No live neural models or machine learning servers are integrated:
-*   **Mock AI Query Engine**: Chat response mapping runs client-side. The system cleanses the investigator's string query and evaluates matches against keys inside the case dossier's pre-computed path array `chatResponses`.
-*   **Failsafe**: If no keyword matching can be resolved, a *"Need more information"* advisory block is rendered.
-
----
-
-## 13. Setup & Installation
-
-Follow these steps to run the complete project locally.
-
-### Prerequisites
-*   [Node.js](https://nodejs.org/) (v18 or higher recommended)
-*   [Python 3](https://www.python.org/)
-
-### Step 1: Clone the Repository
-```bash
-git clone https://github.com/ParthDhengle/SIH-2026-26189.git
-cd SIH-2026-26189
+```text
+Investigation Chat
+        |
+        v submit query
+Network Graph with live DFS updates
+        |
+        v findings-ready and investigation-completed
+Investigation Chat with appended findings
+        |
+        v follow-up query
+Same case, session, conversation, and cumulative graph
 ```
 
-### Step 2: Configure & Start Frontend
-```bash
-# Navigate to the frontend directory
-cd frontend
-
-# Install packages
-npm install
-
-# Run the local development server
-npm run dev
-```
-*The local dashboard will run on **`http://localhost:5173`**.*
-
-### Step 3: Run Backend Entry Point (Scaffold Only)
-```bash
-# Navigate to the backend directory
-cd ../backend
-
-# Run the python entry point
-python main.py
-```
-*(Note: As the backend is a placeholder skeleton, running main.py will exit immediately).*
-
----
-
-## 14. Environment Variables
-*   An empty `.env` configuration file exists in the `backend/` folder.
-*   **Security Notice**: Do not commit actual passwords or private tokens to this file. In production, this file will store database credentials and cryptographic tokens.
-
----
-
-## 15. Demo & Test Data
-The application includes pre-loaded, synthetic mock data inside the folder mapping:
-1.  **CASE-2026-001 (Operation Blackout)**: Smuggling syndicate logs involving *Rahul Sharma* (Primary POI), *Amit Verma*, *Priya Nair*, and *Vikram Malhotra*.
-2.  **CASE-2026-002 (Sector 15 Extortion)**: Cyber gang server logs involving *Sanjay Gupta* (Primary POI), *Neha Patel*, and *Deepak Rao*.
-3.  **CASE-2026-003 (Vikram Hawala Syndicate)**: Structured ledgers involving *Rohan Mehta* (Primary POI), *Priya Nair*, and *Vikram Malhotra*.
-
-> [!WARNING]
-> **Data Security**: All data within this workspace is synthetic and for demonstration purposes. Real Call Detail Records (CDRs), geo-coordinate maps, and criminal intelligence logs require explicit governmental clearance and secured, authenticated API channels.
-
----
-
-## 16. Team Development Guide
-To contribute or modify components, work in the following directories:
-
-*   **UI Components / Layouts**: Edit or create files in [`frontend/src/components/`](file:///c:/Users/mayur/OneDrive/Desktop/programming/CrimeGraph%20AI/frontend/src/components) and [`frontend/src/pages/`](file:///c:/Users/mayur/OneDrive/Desktop/programming/CrimeGraph%20AI/frontend/src/pages).
-*   **Styles & Themes**: Update variables inside [`frontend/src/index.css`](file:///c:/Users/mayur/OneDrive/Desktop/programming/CrimeGraph%20AI/frontend/src/index.css).
-*   **Mock Cases / Queries**: Modify structural records in [`frontend/src/data/mockData.js`](file:///c:/Users/mayur/OneDrive/Desktop/programming/CrimeGraph%20AI/frontend/src/data/mockData.js).
-*   **Backend APIs / Routing**: Implement FastAPI/Node endpoints inside [`backend/src/routes/`](file:///c:/Users/mayur/OneDrive/Desktop/programming/CrimeGraph%20AI/backend/src/routes) and define database connections in [`backend/main.py`](file:///c:/Users/mayur/OneDrive/Desktop/programming/CrimeGraph%20AI/backend/main.py).
-
----
-
-## 17. Current Development Status
-
-```
-[████████████████░░░░] 80% Completed
+```text
+┌─────────────────────────────────────────────┐
+│ Investigation Chat                          │
+│                                             │
+│ Investigator: How is Rahul connected...?   │
+│                                             │
+│ System: Investigation started...            │
+│                                             │
+│ ┌──────────────────────┐ ┌───────────────┐  │
+│ │   LIVE KNOWLEDGE     │ │ Findings      │  │
+│ │       GRAPH          │ │ 1. Rahul -> X │  │
+│ │                      │ │ 2. X -> Amit  │  │
+│ └──────────────────────┘ └───────────────┘  │
+│                                             │
+│ System: Investigation completed             │
+│                                             │
+│ Ask a follow-up...                          │
+└─────────────────────────────────────────────┘
 ```
 
-### ✅ Implemented
-*   Corporate light-theme dashboard styled using Tailwind CSS v4.
-*   Simplistic Navigation structure (Dashboard, Cases, Settings).
-*   Active case workspace directory table and creation form.
-*   Tabbed workspace panels (Overview, AI chat, React Flow map, Timeline, Threat Patterns, Evidence list).
-*   Mock authentication portal gated on React states (Email: `investigator@demo.com` / Password: `invest123`).
-*   State-driven "Mark as Solved" buttons updating directories and dashboards dynamically.
+Submitting a query moves the workspace to Network Graph while the existing chat remains mounted and the WebSocket stays active. After final findings and completion arrive, the workspace returns to Investigation Chat. Previous queries, responses, and findings remain visible and are restored from PostgreSQL when the conversation is reopened.
 
-### ⚠️ Partially Implemented
-*   Backend Python package module skeletal folder framework.
+## 9. Data Layer
 
-### ❌ Planned (Future Scope)
-*   FastAPI/Node framework integration.
-*   Neo4j graph database modeling to fetch real nodes/edges.
-*   Machine Learning NLP models to parse queries dynamically.
-*   Live JWT-token user session verification.
+### PostgreSQL
 
----
+PostgreSQL is the primary structured data store for:
 
-## 18. Contribution Guidelines
-*   **Structure**: Follow the established folder layouts. Do not place UI files outside the `frontend/src/` hierarchy.
-*   **Confidentiality**: Never commit API keys, personal access tokens, or live passwords.
-*   **Modularity**: Keep components clean and focused. Use Tailwind theme variables instead of ad-hoc CSS styles.
-*   **Verification**: Run `npm run build` in the `frontend/` directory to verify compilation before submitting pull requests.
+- Entities and persons
+- Phones and call detail records
+- Transactions
+- Vehicles
+- Locations
+- Cases and events
+- Entity relationships
+- Evidence and source records
+- Investigation sessions, messages, runs, and findings
 
----
+### Neo4j
 
-## 19. Troubleshooting
-*   **Port 5173 Conflict**: If port `5173` is occupied when running the frontend dev server, run `npm run dev -- --port <NEW_PORT>` (Vite will typically auto-select another port).
-*   **Module Resolution Errors**: If you encounter errors after pulling changes, clear caches and run `npm install` inside the `frontend/` directory.
+Neo4j stores the investigation Knowledge Graph, including graph nodes, relationships, traversal discoveries, and graph metadata used for final analysis.
+
+The demonstration uses synthetic investigation data. PostgreSQL and Neo4j are real persistence layers in the prototype, not mock databases.
+
+## 10. Backend Architecture
+
+The backend is a Python FastAPI application. Its responsibilities are separated as follows:
+
+| Layer | Responsibility |
+| --- | --- |
+| FastAPI | HTTP/WebSocket orchestration and session lifecycle |
+| Data repository | Parameterized PostgreSQL retrieval and persistence |
+| `get_data()` | Retrieves authorized data associated with one entity |
+| Entity service | Normalizes entities, relationships, evidence, and traversal candidates |
+| DFS service | Iterative, depth-limited traversal with cycle protection |
+| Graph service | Parameterized Neo4j node and relationship upserts |
+| Pattern service | One final Gemini analysis over the completed graph |
+| Schemas/models | Typed API and data contracts |
+| Utilities | Database, Neo4j driver, and environment configuration |
+
+The architectural separation is:
+
+```text
+PostgreSQL -> structured data retrieval
+DFS -> investigation traversal
+Neo4j -> Knowledge Graph representation
+Gemini -> final pattern interpretation
+FastAPI -> orchestration and realtime API
+Frontend -> investigator interaction and visualization
+```
+
+## 11. Frontend
+
+The React/Vite frontend includes:
+
+- Case directory and case workspace
+- Investigation Chat
+- Realtime Network Graph using `@xyflow/react`
+- Findings and pattern presentation
+- Timeline and evidence views
+- Case status and workspace overview
+- Progressive node and edge updates from WebSocket events
+- Stable finding-to-graph highlighting and Clear Highlight behavior
+- Follow-up investigation in the same session
+- Persistent conversation restoration through the backend history endpoint
+
+The existing `mockData.js` provides the initial synthetic dashboard/dossier presentation. Live investigation queries, graph updates, findings, case creation, and conversation persistence use the FastAPI backend.
+
+## 12. Security / Data Principles
+
+- Only authorized investigation data should be used.
+- Synthetic data is used for this SIH prototype.
+- Database credentials and API keys remain in environment configuration and must not be exposed to the frontend or committed to source control.
+- Backend queries use parameterized SQL and parameterized Neo4j queries; arbitrary Cypher is not accepted from the frontend.
+- Source records and evidence references remain traceable where available.
+- The system provides investigative intelligence and relationship analysis, not a legal determination of guilt.
+
+## 13. Example Investigation
+
+Using the synthetic demonstration data, an investigator might ask:
+
+```text
+How is Rahul Sharma connected to Operation Blackout?
+```
+
+The system resolves the mentioned person from PostgreSQL, creates a case-scoped `QueryContext`, and starts DFS from that person rather than treating the case as the seed:
+
+```text
+Rahul Sharma
+      |
+      v
+Phone / communication relationship
+      |
+      v
+Related person or other resolved entity
+      |
+      v
+Financial, vehicle, location, case, or event relationships
+```
+
+DFS explores the relevant network, Neo4j builds the graph progressively, and Gemini analyzes the completed graph in the context of the investigator's question to produce structured investigative findings. The example is based on the repository's synthetic records; the system does not invent missing relationships.
+
+## 14. Current Technology Stack
+
+### Frontend
+
+- React
+- Vite
+- Tailwind CSS
+- `@xyflow/react`
+- Recharts
+- Lucide React
+
+### Backend
+
+- Python
+- FastAPI
+- psycopg2
+
+### Data
+
+- PostgreSQL
+- Neo4j Python driver
+
+### AI
+
+- Gemini API, using Gemini Flash for final structured pattern analysis
+
+## 15. Project Status
+
+The project is a working SIH prototype with the following capabilities implemented:
+
+- Live FastAPI investigation flow
+- PostgreSQL structured data retrieval and conversation persistence
+- Generic persisted case creation
+- Query clarification and database-backed entity resolution
+- Iterative DFS traversal with maximum depth 8 and cycle protection
+- Neo4j graph construction
+- Realtime WebSocket graph visualization
+- Final Gemini-based pattern analysis with safe graph-only fallback
+- Structured investigation findings with evidence and confidence
+- Interactive finding/path highlighting and Clear Highlight
+- Follow-up queries using the same case, session, conversation, and cumulative graph
+- Timeline, evidence, patterns, dashboard, and case workspace views
+
+Current incomplete or environment-dependent areas:
+
+- The live demonstration requires valid Neo4j credentials and a reachable Neo4j instance.
+- Gemini-backed analysis requires `GEMINI_API_KEY`; without it, the graph-only fallback is used.
+- The frontend case directory still uses its local synthetic dossier list for initial presentation; backend case persistence is available through the API, but a full backend case-list hydration workflow is not yet implemented.
+- Authentication is currently a frontend prototype gate rather than production identity and access management.
+
+## 16. Important Prototype Limitation
+
+The current demonstration uses synthetic investigation data. The architecture is designed around authorized investigative data sources, but integration with real government, police, telecom, or financial systems would require appropriate authorization, secure interfaces, access controls, auditing, data governance, and deployment infrastructure.
+
+This prototype is an investigation support system. Its findings represent possible connections, relevant relationships, and investigative leads supported by available data; they are not determinations of criminal responsibility or legal guilt.
